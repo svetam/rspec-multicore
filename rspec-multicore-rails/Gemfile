@@ -1,0 +1,24 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+# Specify your gem's dependencies in rspec-multicore-rails.gemspec
+gemspec
+
+# Override rspec-multicore with local development version
+gem "rspec-multicore", path: "../rspec-multicore"
+
+gem "irb"
+gem "rake", "~> 13.0"
+
+gem "rspec", "~> 3.13"
+
+if (rails_version = ENV.fetch("RAILS_VERSION", nil))
+  gem "activerecord", rails_version
+  gem "railties", rails_version
+end
+
+gem "rubocop", "~> 1.21"
+gem "rubocop-rspec", "~> 3.0"
+
+gem "byebug"

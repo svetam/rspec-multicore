@@ -1,0 +1,8 @@
+# Changelog
+
+## 0.2.0.pre1
+
+- Uses one narrow `Runner#run_specs` patch and delegates suite ownership to RSpec.
+- Adds a bounded plain-value Channel, persistent process Pool, parent object registry, and standard-event snapshot bridge.
+- Adds `RSPEC_MULTICORE`, configurable workers, fork hooks, and reverse-order shutdown hooks.
+- Supports Ruby 3.2+ and RSpec 3.13.x.

@@ -1,0 +1,15 @@
+# frozen_string_literal: true
+
+ENV["RSPEC_MULTICORE"] = "0"
+
+require "rspec/multicore"
+require "rspec/multicore/rails"
+
+RSpec.configure do |config|
+  config.example_status_persistence_file_path = ".rspec_status"
+  config.disable_monkey_patching!
+
+  config.expect_with :rspec do |c|
+    c.syntax = :expect
+  end
+end

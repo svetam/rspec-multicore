@@ -1,0 +1,81 @@
+AllCops:
+  TargetRubyVersion: 3.2
+  NewCops: enable
+  SuggestExtensions: false
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+# Prefer endless method definitions for simple one-liners
+Style/EndlessMethod:
+  Enabled: true
+  EnforcedStyle: require_single_line
+
+# Disable block length checks for test files
+Metrics/BlockLength:
+  Exclude:
+    - 'spec/**/*_spec.rb'
+    - 'spec/**/*.rb'
+    - '*.gemspec'
+
+# Disable metrics for complex system code
+Metrics/ClassLength:
+  Max: 220
+
+Metrics/MethodLength:
+  Max: 30
+  Exclude:
+    - 'spec/**/*.rb'
+
+Metrics/AbcSize:
+  Max: 35
+
+Metrics/CyclomaticComplexity:
+  Max: 10
+
+Metrics/PerceivedComplexity:
+  Max: 10
+
+# Allow empty blocks in tests (for RSpec group/example creation)
+Lint/EmptyBlock:
+  Exclude:
+    - 'spec/**/*_spec.rb'
+
+# Allow format strings in tests
+Style/FormatStringToken:
+  Exclude:
+    - 'spec/**/*.rb'
+
+# Marshal.load is safe in our controlled context (IPC between our own processes)
+Security/MarshalLoad:
+  Exclude:
+    - "lib/rspec/multicore/channel.rb"
+
+# Allow short param names in fixtures
+Naming/MethodParameterName:
+  Exclude:
+    - "**/spec/fixtures/**/*.rb"
+
+# Predicate naming - these implement IO interface
+Naming/PredicateMethod:
+  Exclude:
+    - "lib/rspec/multicore/reporter_bridge.rb"
+
+# Allow endless methods with conditionals
+Style/AmbiguousEndlessMethodDefinition:
+  Enabled: false
+
+Style/CombinableLoops:
+  Exclude:
+    - "lib/rspec/multicore/pool.rb"
+
+Lint/ConstantDefinitionInBlock:
+  Exclude:
+    - "spec/**/*.rb"
+
+# Gemspec dev dependencies - we use Gemfile
+Gemspec/DevelopmentDependencies:
+  Enabled: false

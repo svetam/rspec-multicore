@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  release:
+    if: github.repository == 'svetam/rspec-multicore'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
+      - name: Read and validate version
+        id: version
+        run: |
+          CORE_VERSION=$(ruby -Irspec-multicore/lib -e 'require "rspec/multicore/version"; puts RSpec::Multicore::VERSION')
+          RAILS_VERSION=$(ruby -Irspec-multicore-rails/lib -e 'require "rspec/multicore/rails/version"; puts RSpec::Multicore::Rails::VERSION')
+
+          if [ "$CORE_VERSION" != "$RAILS_VERSION" ]; then
+            echo "Version mismatch: core=$CORE_VERSION rails=$RAILS_VERSION" >&2
+            exit 1
+          fi
+
+          echo "version=$CORE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$CORE_VERSION" >> "$GITHUB_OUTPUT"
+          ruby -rrubygems -e 'puts "prerelease=#{Gem::Version.new(ARGV.fetch(0)).prerelease?}"' "$CORE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if tag already exists
+        id: tag
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/${{ steps.version.outputs.tag }}"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "${{ steps.version.outputs.tag }} already exists; skipping release"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build core gem
+        if: steps.tag.outputs.exists == 'false'
+        working-directory: rspec-multicore
+        run: |
+          mkdir -p ../pkg
+          gem build rspec-multicore.gemspec \
+            --output "../pkg/rspec-multicore-${{ steps.version.outputs.version }}.gem"
+
+      - name: Build Rails gem
+        if: steps.tag.outputs.exists == 'false'
+        working-directory: rspec-multicore-rails
+        run: |
+          gem build rspec-multicore-rails.gemspec \
+            --output "../pkg/rspec-multicore-rails-${{ steps.version.outputs.version }}.gem"
+
+      - name: Configure RubyGems credentials
+        if: steps.tag.outputs.exists == 'false'
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+
+      - name: Push gems to RubyGems.org
+        if: steps.tag.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          published() {
+            ruby -rjson -rnet/http -e '
+              response = Net::HTTP.get_response(URI("https://rubygems.org/api/v1/versions/#{ARGV.fetch(0)}.json"))
+              exit 1 unless response.is_a?(Net::HTTPSuccess)
+              versions = JSON.parse(response.body)
+              exit versions.any? { |entry| entry.fetch("number") == ARGV.fetch(1) } ? 0 : 1
+            ' "$1" "$VERSION"
+          }
+
+          if published rspec-multicore; then
+            echo "rspec-multicore $VERSION is already published"
+          else
+            gem push "pkg/rspec-multicore-$VERSION.gem"
+          fi
+
+          if published rspec-multicore-rails; then
+            echo "rspec-multicore-rails $VERSION is already published"
+          else
+            gem push "pkg/rspec-multicore-rails-$VERSION.gem"
+          fi
+
+      - name: Create Git tag
+        if: steps.tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub Release
+        if: steps.tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          generate_release_notes: true

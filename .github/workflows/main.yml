@@ -1,0 +1,86 @@
+name: Ruby
+
+on:
+  push:
+    branches:
+      - master
+
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.gem }} on Ruby ${{ matrix.ruby }} / ${{ matrix.os }}
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/${{ matrix.path }}/Gemfile
+    strategy:
+      fail-fast: false
+      matrix:
+        gem: [rspec-multicore, rspec-multicore-rails]
+        include:
+          - gem: rspec-multicore
+            path: rspec-multicore
+          - gem: rspec-multicore-rails
+            path: rspec-multicore-rails
+        os: [ubuntu-latest, macos-latest]
+        ruby:
+          - '3.2'
+          - '3.3'
+          - '3.4'
+    
+    steps:
+      - uses: actions/checkout@v7
+      
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      
+      - name: Run tests
+        working-directory: ${{ matrix.path }}
+        run: |
+          bundle exec rake spec
+          bundle exec rubocop --cache false
+
+  core-contract:
+    runs-on: ubuntu-latest
+    name: rspec-multicore / RSpec Core ${{ matrix.rspec-core }}
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/rspec-multicore/Gemfile
+      RSPEC_CORE_VERSION: ${{ matrix.rspec-core }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rspec-core: ["3.13.0", "~> 3.13"]
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - working-directory: rspec-multicore
+        run: bundle install
+      - working-directory: rspec-multicore
+        run: bundle exec rake spec
+
+  rails-contract:
+    runs-on: ubuntu-latest
+    name: rspec-multicore-rails / Rails ${{ matrix.rails }}
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/rspec-multicore-rails/Gemfile
+      RAILS_VERSION: ${{ matrix.rails }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rails: ["~> 7.1", "~> 8.0"]
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - working-directory: rspec-multicore-rails
+        run: bundle install
+      - working-directory: rspec-multicore-rails
+        run: bundle exec rake spec
