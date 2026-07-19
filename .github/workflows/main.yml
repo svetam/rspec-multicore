@@ -1,4 +1,4 @@
-name: Ruby
+name: CI
 
 on:
   push:
@@ -84,3 +84,106 @@ jobs:
         run: bundle install
       - working-directory: rspec-multicore-rails
         run: bundle exec rake spec
+
+  release-readiness:
+    runs-on: ubuntu-latest
+    name: Release readiness
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+
+      - name: Validate version
+        id: version
+        run: |
+          CORE_VERSION=$(ruby -Irspec-multicore/lib -e 'require "rspec/multicore/version"; puts RSpec::Multicore::VERSION')
+          RAILS_VERSION=$(ruby -Irspec-multicore-rails/lib -e 'require "rspec/multicore/rails/version"; puts RSpec::Multicore::Rails::VERSION')
+
+          if [ "$CORE_VERSION" != "$RAILS_VERSION" ]; then
+            echo "Version mismatch: core=$CORE_VERSION rails=$RAILS_VERSION" >&2
+            exit 1
+          fi
+
+          for CHANGELOG in CHANGELOG.md rspec-multicore/CHANGELOG.md rspec-multicore-rails/CHANGELOG.md; do
+            if ! grep -Fq "## $CORE_VERSION" "$CHANGELOG"; then
+              echo "$CHANGELOG has no entry for $CORE_VERSION" >&2
+              exit 1
+            fi
+          done
+
+          if ! git rev-parse --verify --quiet "refs/tags/v$CORE_VERSION"; then
+            LATEST_VERSION=$(git tag --list 'v*' | ruby -rrubygems -e '
+              versions = $stdin.each_line.filter_map do |tag|
+                value = tag.strip.delete_prefix("v")
+                Gem::Version.new(value) unless value.empty?
+              end
+              puts versions.max if versions.any?
+            ')
+
+            if [ -n "$LATEST_VERSION" ]; then
+              ruby -rrubygems -e '
+                candidate = Gem::Version.new(ARGV.fetch(0))
+                latest = Gem::Version.new(ARGV.fetch(1))
+                abort "Version #{candidate} must be newer than #{latest}" unless candidate > latest
+              ' "$CORE_VERSION" "$LATEST_VERSION"
+            fi
+          fi
+
+          echo "version=$CORE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build core gem
+        working-directory: rspec-multicore
+        run: |
+          mkdir -p ../pkg
+          gem build rspec-multicore.gemspec \
+            --output "../pkg/rspec-multicore-${{ steps.version.outputs.version }}.gem"
+
+      - name: Build Rails gem
+        working-directory: rspec-multicore-rails
+        run: |
+          gem build rspec-multicore-rails.gemspec \
+            --output "../pkg/rspec-multicore-rails-${{ steps.version.outputs.version }}.gem"
+
+      - name: Validate package metadata
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ruby -rrubygems/package -e '
+            version = Gem::Version.new(ENV.fetch("VERSION"))
+            core = Gem::Package.new("pkg/rspec-multicore-#{version}.gem").spec
+            rails = Gem::Package.new("pkg/rspec-multicore-rails-#{version}.gem").spec
+
+            abort "Unexpected core package" unless core.name == "rspec-multicore" && core.version == version
+            abort "Unexpected Rails package" unless rails.name == "rspec-multicore-rails" && rails.version == version
+
+            dependency = rails.dependencies.find { |entry| entry.name == "rspec-multicore" }
+            expected = Gem::Requirement.new("= #{version}")
+            abort "Rails must depend on rspec-multicore #{expected}" unless dependency&.requirement == expected
+          '
+
+  ci:
+    runs-on: ubuntu-latest
+    name: CI
+    if: always()
+    needs: [test, core-contract, rails-contract, release-readiness]
+
+    steps:
+      - name: Verify required jobs
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          CORE_CONTRACT_RESULT: ${{ needs.core-contract.result }}
+          RAILS_CONTRACT_RESULT: ${{ needs.rails-contract.result }}
+          RELEASE_READINESS_RESULT: ${{ needs.release-readiness.result }}
+        run: |
+          if [ "$TEST_RESULT" != "success" ] || \
+             [ "$CORE_CONTRACT_RESULT" != "success" ] || \
+             [ "$RAILS_CONTRACT_RESULT" != "success" ] || \
+             [ "$RELEASE_READINESS_RESULT" != "success" ]; then
+            echo "One or more required CI jobs failed" >&2
+            exit 1
+          fi
