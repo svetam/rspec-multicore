@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0.pre2
+
+- Improves release validation and retry safety without changing runtime behavior.
+
 ## 0.2.0.pre1
 
 - Uses the core worker count as the single concurrency source.

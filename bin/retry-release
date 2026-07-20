@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: bin/retry-release [RUN_ID]"
+}
+
+fail() {
+  echo "retry-release: $*" >&2
+  exit 1
+}
+
+if [ "$#" -gt 1 ]; then
+  usage >&2
+  exit 1
+fi
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+command -v gh >/dev/null 2>&1 || fail "gh is required"
+gh auth status >/dev/null 2>&1 || fail "gh is not authenticated"
+
+RUN_ID=${1:-}
+
+if [ -z "$RUN_ID" ]; then
+  RUN_ID=$(gh run list \
+    --workflow release.yml \
+    --branch master \
+    --limit 20 \
+    --json databaseId,status,conclusion \
+    --jq 'map(select(.status == "completed" and (.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")))[0].databaseId // empty')
+  [ -n "$RUN_ID" ] || fail "no unsuccessful Release run found for master"
+fi
+
+[[ "$RUN_ID" =~ ^[0-9]+$ ]] || fail "RUN_ID must be numeric"
+
+IFS=$'\t' read -r WORKFLOW BRANCH STATUS CONCLUSION URL < <(
+  gh run view "$RUN_ID" \
+    --json workflowName,headBranch,status,conclusion,url \
+    --jq '[.workflowName, .headBranch, .status, .conclusion, .url] | @tsv'
+)
+
+[ "$WORKFLOW" = "Release" ] || fail "run $RUN_ID belongs to $WORKFLOW, not Release"
+[ "$BRANCH" = "master" ] || fail "run $RUN_ID belongs to $BRANCH, not master"
+[ "$STATUS" = "completed" ] || fail "run $RUN_ID is still $STATUS"
+
+echo "Release run: $URL"
+
+case "$CONCLUSION" in
+  failure)
+    echo "Retrying failed jobs"
+    gh run rerun "$RUN_ID" --failed
+    ;;
+  cancelled|timed_out)
+    echo "Retrying complete run"
+    gh run rerun "$RUN_ID"
+    ;;
+  success)
+    fail "run $RUN_ID already succeeded"
+    ;;
+  *)
+    fail "run $RUN_ID has unsupported conclusion: $CONCLUSION"
+    ;;
+esac
+
+gh run watch "$RUN_ID" --exit-status

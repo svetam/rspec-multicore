@@ -13,10 +13,10 @@ Both gems require Ruby 3.2+ and a platform with `fork` and `UNIXSocket.pair`.
 
 ```ruby
 group :test do
-  gem "rspec-multicore", "0.2.0.pre1"
+  gem "rspec-multicore", "0.2.0.pre2"
 
   # Rails applications that use ActiveRecord:
-  gem "rspec-multicore-rails", "0.2.0.pre1"
+  gem "rspec-multicore-rails", "0.2.0.pre2"
 end
 ```
 
