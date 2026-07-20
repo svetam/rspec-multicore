@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0.pre2 - 2026-07-20
+
+### Changed
+
+- Reserve merges to `master` for validated releases prepared on `develop`.
+- Make release publication independently retryable across RubyGems, Git tags,
+  and GitHub Releases.
+- Add focused maintainer tooling for retrying failed release workflow runs.
+
 ## 0.2.0.pre1 - 2026-07-18
 
 First public prerelease.

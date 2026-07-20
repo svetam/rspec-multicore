@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches:
+      - develop
       - master
 
   pull_request:
@@ -100,6 +101,12 @@ jobs:
 
       - name: Validate version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           CORE_VERSION=$(ruby -Irspec-multicore/lib -e 'require "rspec/multicore/version"; puts RSpec::Multicore::VERSION')
           RAILS_VERSION=$(ruby -Irspec-multicore-rails/lib -e 'require "rspec/multicore/rails/version"; puts RSpec::Multicore::Rails::VERSION')
@@ -116,7 +123,24 @@ jobs:
             fi
           done
 
-          if ! git rev-parse --verify --quiet "refs/tags/v$CORE_VERSION"; then
+          TAG_EXISTS=false
+          if git rev-parse --verify --quiet "refs/tags/v$CORE_VERSION"; then
+            TAG_EXISTS=true
+          fi
+
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$BASE_REF" = "master" ]; then
+            if [ "$HEAD_REF" != "develop" ] || [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then
+              echo "Release PRs must originate from $REPOSITORY:develop" >&2
+              exit 1
+            fi
+
+            if [ "$TAG_EXISTS" = "true" ]; then
+              echo "v$CORE_VERSION is already released" >&2
+              exit 1
+            fi
+          fi
+
+          if [ "$TAG_EXISTS" = "false" ]; then
             LATEST_VERSION=$(git tag --list 'v*' | ruby -rrubygems -e '
               versions = $stdin.each_line.filter_map do |tag|
                 value = tag.strip.delete_prefix("v")
