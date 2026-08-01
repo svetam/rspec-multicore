@@ -131,9 +131,27 @@ RAILS_VERSION='~> 7.1' bundle update activerecord railties
 RAILS_VERSION='~> 7.1' bundle exec rake spec
 ```
 
+Run the required third-party compatibility tier:
+
+```bash
+cd compatibility/required
+bundle install
+bundle exec rake spec
+```
+
+Run the extended tier with Redis available:
+
+```bash
+cd compatibility/extended
+bundle install
+REDIS_URL=redis://127.0.0.1:6379 bundle exec rake spec
+```
+
+To exercise its Rails 7.1 contract, set `RAILS_VERSION='~> 7.1.0'` and update `activerecord` and `railties` before running. Restore the extended lockfile afterward. CI runs this tier weekly and on manual dispatch; it is intentionally outside the pull-request aggregate gate.
+
 Restore the committed `Gemfile.lock` with `git restore Gemfile.lock` after a
 local contract run. CI covers Ruby 3.2–3.4 on Ubuntu/macOS, minimum/latest RSpec
-3.13, and Rails 7.1/8.0.
+3.13, Rails 7.1/8.0, and the required compatibility tier.
 
 ## Debugging
 

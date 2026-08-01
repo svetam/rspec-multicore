@@ -3,6 +3,7 @@
 !/.github/
 !/.github/workflows/
 !/.github/workflows/release.yml
+!/.github/workflows/compatibility.yml
 
 /.bundle/
 /.idea/
