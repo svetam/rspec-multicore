@@ -1,6 +1,6 @@
 # rspec_junit_formatter
 
-Tested with rspec_junit_formatter 0.6.0, Ruby 3.4, and two workers. The compatibility test compares serial and parallel pass, failure, and pending results; parses the XML; validates counts and durations; and rejects duplicate test cases.
+Tested with rspec_junit_formatter 0.6.0, Ruby 3.4, and two workers. Serial and parallel reports contain the same passed, failed, and pending cases with valid counts, durations, and no duplicates.
 
 ## Installation
 
@@ -11,26 +11,35 @@ group :test do
 end
 ```
 
-## Configuration
+## Project helper
 
-No worker hook or per-worker XML file is needed. Configure one formatter in the parent:
+Create `spec/support/rspec_multicore/junit.rb`:
 
-```bash
-bundle exec rspec \
-  --require rspec_junit_formatter \
-  --format RspecJunitFormatter \
-  --out tmp/rspec.xml
+```ruby
+# frozen_string_literal: true
+
+require "fileutils"
+require "rspec_junit_formatter"
+require "rspec/multicore"
+
+report_path = File.expand_path("../../../tmp/rspec.xml", __dir__)
+FileUtils.mkdir_p(File.dirname(report_path))
+
+RSpec.configure do |config|
+  config.add_formatter(RspecJunitFormatter, report_path)
+end
 ```
 
-Or put the equivalent in `.rspec`:
+## Load the helper
 
-```text
---require rspec_junit_formatter
---format RspecJunitFormatter
---out tmp/rspec.xml
+```ruby
+# spec/spec_helper.rb
+require_relative "support/rspec_multicore/junit"
 ```
 
-RSpec Multicore replays standard example notifications through the parent reporter in seeded order. The JUnit formatter therefore sees one normal RSpec event stream and owns one report.
+No worker hook or per-worker XML file is needed. RSpec Multicore replays one ordered event stream through the parent reporter, so the formatter owns one `tmp/rspec.xml` report.
 
-Do not configure a formatter file per worker unless another part of your test setup bypasses the parent reporter. See the executable [JUnit fixture](../../compatibility/fixtures/junit/mixed_spec.rb).
+Do not configure another JUnit formatter per worker unless some separate test runner bypasses the parent reporter.
+
+See the executable [JUnit fixture](../../compatibility/fixtures/junit/mixed_spec.rb).
 

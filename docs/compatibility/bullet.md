@@ -1,6 +1,6 @@
 # Bullet
 
-Tested with Bullet 8.1.3, ActiveRecord, Ruby 3.4, Rails 7.1 and 8.0, and two workers. Bullet's inherited ActiveSupport and ActiveRecord instrumentation detects an N+1 query independently in each worker, while serial and parallel RSpec results match.
+Tested with Bullet 8.1.3, ActiveRecord, Ruby 3.4, Rails 7.1 and 8.0, and two workers. Bullet’s inherited instrumentation detects an N+1 query independently in each worker.
 
 ## Installation
 
@@ -11,11 +11,13 @@ group :test do
 end
 ```
 
-## Configuration
+## Project helper
 
-Load Bullet after ActiveRecord and enable the detectors needed by the project:
+Create `spec/support/rspec_multicore/bullet.rb`:
 
 ```ruby
+# frozen_string_literal: true
+
 require "rspec/multicore/rails"
 require "bullet"
 
@@ -28,18 +30,24 @@ RSpec.configure do |config|
   end
 
   config.after do
-    if Bullet.notification?
-      Bullet.perform_out_of_channel_notifications
-    end
+    Bullet.perform_out_of_channel_notifications if Bullet.notification?
   ensure
     Bullet.end_request
   end
 end
 ```
 
-Configure Bullet's notifier or `Bullet.raise` according to the application's existing test policy. RSpec Multicore does not replace that policy; it preserves the instrumented process state inherited by each worker.
+## Load the helper
 
-No multicore hook is required when Bullet is initialized before the fork and all query work occurs inside examples. Notification targets that write files or use shared external resources may require worker-specific paths of their own.
+Load it from `rails_helper.rb` after Rails and ActiveRecord initialize:
+
+```ruby
+# spec/rails_helper.rb
+require File.expand_path("../config/environment", __dir__)
+require_relative "support/rspec_multicore/bullet"
+```
+
+Configure Bullet’s notifier or `Bullet.raise` according to the project’s existing policy. No multicore hook is required when Bullet initializes before the fork and queries occur inside examples. File-based or external notification targets may need worker-specific resources.
 
 See the executable [Bullet fixture](../../compatibility/fixtures/bullet/spec_helper.rb).
 

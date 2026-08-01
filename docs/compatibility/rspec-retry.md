@@ -1,6 +1,6 @@
 # rspec-retry
 
-Tested with rspec-retry 0.6.2, Ruby 3.4, and two workers. A failing first attempt succeeds on retry, while the parent reporter receives one final successful example result with no duplicate events.
+Tested with rspec-retry 0.6.2, Ruby 3.4, and two workers. A failing first attempt succeeds on retry, and the parent receives one final successful result without duplicated events.
 
 ## Installation
 
@@ -11,9 +11,13 @@ group :test do
 end
 ```
 
-## Configuration
+## Project helper
+
+Create `spec/support/rspec_multicore/rspec_retry.rb`:
 
 ```ruby
+# frozen_string_literal: true
+
 require "rspec/retry"
 require "rspec/multicore"
 
@@ -23,17 +27,22 @@ RSpec.configure do |config|
 end
 ```
 
-Apply retry metadata using rspec-retry's ordinary interface:
+## Load the helper
 
 ```ruby
-RSpec.describe ApiClient do
-  it "handles an eventually available service", retry: 2 do
-    expect(ApiClient.status).to eq(:available)
-  end
+# spec/spec_helper.rb
+require_relative "support/rspec_multicore/rspec_retry"
+```
+
+Use ordinary retry metadata:
+
+```ruby
+it "handles an eventually available service", retry: 2 do
+  expect(ApiClient.status).to eq(:available)
 end
 ```
 
-No multicore hook is required. Retries happen entirely inside the worker executing that example group, and only its final RSpec result is replayed by the parent.
+Retries happen inside the worker executing the example group, so no multicore hook is required. Prefer targeted metadata because broad retry policies can conceal nondeterministic tests.
 
-Retries can conceal nondeterministic tests; use targeted metadata when possible rather than enabling high retry counts globally. See the executable [rspec-retry fixture](../../compatibility/fixtures/rspec_retry/retry_spec.rb).
+See the executable [rspec-retry fixture](../../compatibility/fixtures/rspec_retry/retry_spec.rb).
 

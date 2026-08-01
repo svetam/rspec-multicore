@@ -1,6 +1,6 @@
 # Database Cleaner ActiveRecord
 
-Tested with database_cleaner-active_record 2.2.2, Ruby 3.4, Rails 8.0, and two workers. Transaction cleanup is performed through each worker's isolated ActiveRecord connection, and the compatibility test verifies that every worker database is empty after the examples finish.
+Tested with database_cleaner-active_record 2.2.2, Ruby 3.4, Rails 8.0, and two workers. Transaction cleanup uses each worker’s isolated ActiveRecord connection, and every worker database is empty after the examples finish.
 
 ## Installation
 
@@ -11,11 +11,13 @@ group :test do
 end
 ```
 
-## Configuration
+## Project helper
 
-Require the Rails adapter before configuring Database Cleaner:
+Create `spec/support/rspec_multicore/database_cleaner.rb`:
 
 ```ruby
+# frozen_string_literal: true
+
 require "rspec/multicore/rails"
 require "database_cleaner/active_record"
 
@@ -30,9 +32,19 @@ RSpec.configure do |config|
 end
 ```
 
-No additional worker hook is required for the transaction strategy: the block runs inside the worker after the Rails adapter has established that worker's connection.
+## Load the helper
 
-The compatibility matrix does not currently prove truncation or deletion strategies. If your suite uses them, ensure they operate only on disposable test databases prepared by `db:test:multicore:prepare` before adopting the configuration.
+Load it from `rails_helper.rb` after Rails initializes ActiveRecord:
+
+```ruby
+# spec/rails_helper.rb
+require File.expand_path("../config/environment", __dir__)
+require_relative "support/rspec_multicore/database_cleaner"
+```
+
+No additional worker hook is required for the transaction strategy because the cleaning block runs after the Rails adapter establishes the worker connection.
+
+Truncation and deletion strategies are not covered. If the project uses them, ensure they can only target disposable databases prepared by `db:test:multicore:prepare`.
 
 See the executable [Database Cleaner fixture](../../compatibility/fixtures/rails_stack/spec_helper.rb).
 

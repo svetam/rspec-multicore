@@ -15,7 +15,10 @@ RSpec.describe "SimpleCov compatibility" do
         "simplecov",
         workers: 2,
         output: File.join(directory, "parallel.json"),
-        env: { "COVERAGE_ROOT" => directory }
+        env: {
+          "COVERAGE_ROOT" => directory,
+          "COVERAGE_SUMMARY" => File.join(directory, "merged.json")
+        }
       )
 
       expect(serial.exit_code).to eq(0), serial.output
@@ -27,15 +30,7 @@ RSpec.describe "SimpleCov compatibility" do
       expect(resultsets.flat_map { JSON.parse(File.read(_1)).keys })
         .to contain_exactly("rspec-multicore-worker-1", "rspec-multicore-worker-2")
 
-      summary = File.join(directory, "merged.json")
-      collate = Compatibility.run_ruby(
-        File.join(Compatibility::FIXTURES, "simplecov", "collate.rb"),
-        directory,
-        summary
-      )
-      expect(collate.exit_code).to eq(0), collate.output
-
-      coverage = JSON.parse(File.read(summary))
+      coverage = JSON.parse(File.read(File.join(directory, "merged.json")))
       expect(coverage.keys).to contain_exactly("alpha.rb", "beta.rb")
       expect(coverage.values).to all(be_an(Array).and(be_any))
 
@@ -44,6 +39,7 @@ RSpec.describe "SimpleCov compatibility" do
       expect(File.read(html)).to include("coverage_data.js")
       expect(File.read(File.join(directory, "merged", "coverage_data.js")))
         .to include("alpha.rb", "beta.rb")
+      expect(File).to exist(File.join(directory, "serial", "merged", "index.html"))
     end
   end
 end

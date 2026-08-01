@@ -1,6 +1,6 @@
 # Fuubar
 
-Tested with Fuubar 2.5.1, Ruby 3.4, and two workers. Serial and parallel identities and statuses match, and Fuubar receives the ordered parent reporter stream with the correct summary and no duplicated examples.
+Tested with Fuubar 2.5.1, Ruby 3.4, and two workers. Fuubar receives the parent’s ordered reporter stream with the correct summary and no duplicated examples.
 
 ## Installation
 
@@ -11,23 +11,31 @@ group :test do
 end
 ```
 
-## Configuration
+## Project helper
 
-No worker hook or output collation is needed. Configure Fuubar as a normal parent-owned RSpec formatter:
+Create `spec/support/rspec_multicore/fuubar.rb`:
 
-```text
-# .rspec
---require fuubar
---format Fuubar
+```ruby
+# frozen_string_literal: true
+
+require "fuubar"
+require "rspec/multicore"
+
+RSpec.configure do |config|
+  config.add_formatter(Fuubar)
+end
 ```
 
-Or invoke it directly:
+## Load the helper
 
-```bash
-bundle exec rspec --require fuubar --format Fuubar
+```ruby
+# spec/spec_helper.rb
+require_relative "support/rspec_multicore/fuubar"
 ```
 
-RSpec Multicore buffers standard reporter events by top-level group and replays them in seeded order. Fuubar consumes that parent event stream just as it does during a serial run.
+No worker hook or output collation is required. Fuubar consumes the standard parent reporter notifications just as it does during serial execution.
 
-Custom formatters that call unsupported, nonstandard reporter methods are outside this recipe. See the executable [Fuubar fixture](../../compatibility/fixtures/fuubar/spec_helper.rb).
+Custom formatters that invoke unsupported, nonstandard reporter methods remain outside this recipe.
+
+See the executable [Fuubar fixture](../../compatibility/fixtures/fuubar/spec_helper.rb).
 
