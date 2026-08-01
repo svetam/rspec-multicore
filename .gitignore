@@ -3,8 +3,10 @@
 !/.github/
 !/.github/workflows/
 !/.github/workflows/release.yml
+!/.github/workflows/compatibility.yml
 
-/.bundle/
+.bundle/
+/vendor/bundle/
 /.idea/
 /.wi*
 /.yardoc

@@ -86,6 +86,26 @@ jobs:
       - working-directory: rspec-multicore-rails
         run: bundle exec rake spec
 
+  required-compatibility:
+    runs-on: ubuntu-latest
+    name: Required third-party compatibility
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/compatibility/required/Gemfile
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - working-directory: compatibility/required
+        run: bundle exec rake spec
+      - name: Verify checkout
+        if: always()
+        run: |
+          git status --short
+          test -z "$(git status --porcelain)"
+
   release-readiness:
     runs-on: ubuntu-latest
     name: Release readiness
@@ -194,7 +214,7 @@ jobs:
     runs-on: ubuntu-latest
     name: CI
     if: always()
-    needs: [test, core-contract, rails-contract, release-readiness]
+    needs: [test, core-contract, rails-contract, required-compatibility, release-readiness]
 
     steps:
       - name: Verify required jobs
@@ -202,11 +222,13 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           CORE_CONTRACT_RESULT: ${{ needs.core-contract.result }}
           RAILS_CONTRACT_RESULT: ${{ needs.rails-contract.result }}
+          REQUIRED_COMPATIBILITY_RESULT: ${{ needs.required-compatibility.result }}
           RELEASE_READINESS_RESULT: ${{ needs.release-readiness.result }}
         run: |
           if [ "$TEST_RESULT" != "success" ] || \
              [ "$CORE_CONTRACT_RESULT" != "success" ] || \
              [ "$RAILS_CONTRACT_RESULT" != "success" ] || \
+             [ "$REQUIRED_COMPATIBILITY_RESULT" != "success" ] || \
              [ "$RELEASE_READINESS_RESULT" != "success" ]; then
             echo "One or more required CI jobs failed" >&2
             exit 1

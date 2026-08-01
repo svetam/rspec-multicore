@@ -121,6 +121,28 @@ RSPEC_MULTICORE=0 bundle exec rspec
 
 RSpec::Multicore does not promise automatic SimpleCov merging. Parallel coverage requires project-owned worker names, result files, shutdown finalization, and merging configured through the lifecycle hooks.
 
+## Tested compatibility recipes
+
+These application-owned configurations are exercised by the compatibility test matrix. They are not built-in integrations or guarantees for every third-party version.
+
+Required on pull requests:
+
+- [SimpleCov](docs/compatibility/simplecov.md)
+- [rspec_junit_formatter](docs/compatibility/rspec-junit-formatter.md)
+- [FactoryBot Rails](docs/compatibility/factory-bot-rails.md)
+- [Database Cleaner ActiveRecord](docs/compatibility/database-cleaner-active-record.md)
+- [WebMock](docs/compatibility/webmock.md)
+- [VCR](docs/compatibility/vcr.md)
+
+Tested weekly and manually:
+
+- [Capybara](docs/compatibility/capybara.md)
+- [Sidekiq and Redis](docs/compatibility/sidekiq.md)
+- [TestProf](docs/compatibility/test-prof.md)
+- [rspec-retry](docs/compatibility/rspec-retry.md)
+- [Fuubar](docs/compatibility/fuubar.md)
+- [Bullet](docs/compatibility/bullet.md)
+
 ## Development
 
 Run each gem independently:
@@ -133,6 +155,9 @@ bundle exec rubocop --cache false
 cd ../rspec-multicore-rails
 bundle exec rake spec
 bundle exec rubocop --cache false
+
+cd ../compatibility/required
+bundle exec rake spec
 ```
 
 See the [development guide](DEVELOPMENT.md), [contribution guide](CONTRIBUTING.md),
