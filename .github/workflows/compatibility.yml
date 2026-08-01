@@ -41,4 +41,5 @@ jobs:
         if: always()
         run: |
           git restore compatibility/extended/Gemfile.lock
+          git status --short
           test -z "$(git status --porcelain)"
