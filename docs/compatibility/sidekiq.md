@@ -1,6 +1,6 @@
 # Sidekiq and Redis
 
-Tested with Sidekiq 8.1.6, Redis, Ruby 3.4, and two workers. Serial and parallel example results match; workers use different Redis databases; queues cannot see one another; and shutdown removes temporary data and closes each worker-owned pool.
+Tested with Sidekiq 8.1.6, Redis, Ruby 3.4, and two workers. Workers use different Redis databases, queues cannot see one another, and shutdown removes temporary data and closes worker-owned pools.
 
 ## Installation
 
@@ -11,17 +11,21 @@ group :test do
 end
 ```
 
-Reserve a Redis server and database range exclusively for tests. Never point this configuration at production or shared development data.
+Reserve a Redis server and database range exclusively for tests:
 
 ```bash
 export TEST_REDIS_URL=redis://127.0.0.1:6379
 ```
 
-## Configuration
+Never point this setup at production or shared development data.
 
-Add this to the test setup before any code opens Sidekiq's Redis pool:
+## Project helper
+
+Create `spec/support/rspec_multicore/sidekiq.rb`:
 
 ```ruby
+# frozen_string_literal: true
+
 require "sidekiq"
 require "rspec/multicore"
 
@@ -46,8 +50,7 @@ module TestSidekiqIsolation
   end
 end
 
-# Serial mode uses database 12. This only configures the lazy pool; do not
-# connect to Redis in the parent before workers fork.
+# Serial mode uses database 12. This configures the lazy pool without opening it.
 TestSidekiqIsolation.configure(0)
 
 RSpec::Multicore.on_worker_fork do |slot|
@@ -65,7 +68,18 @@ RSpec.configure do |config|
 end
 ```
 
-With two workers, the snippet uses Redis databases 13 and 14. Increase or relocate the range if another test process uses those databases. Redis commonly defaults to 16 databases, so ensure the configured worker count fits the server configuration.
+## Load the helper
 
-This recipe tests Sidekiq client queue isolation, not execution by Sidekiq server processes. If the application starts external workers, their configuration must select the corresponding worker resource explicitly. See the executable [Sidekiq fixture](../../compatibility/fixtures/sidekiq/spec_helper.rb).
+Require it before application setup can open Sidekiq’s Redis pool:
+
+```ruby
+# spec/spec_helper.rb
+require_relative "support/rspec_multicore/sidekiq"
+```
+
+With two workers, databases 13 and 14 are used. Ensure the reserved range fits the Redis server’s configured database count and does not overlap another test process.
+
+This tests Sidekiq client queues, not execution by external Sidekiq server processes. External workers need their own explicit resource mapping.
+
+See the executable [Sidekiq fixture](../../compatibility/fixtures/sidekiq/spec_helper.rb).
 

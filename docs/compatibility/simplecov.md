@@ -1,6 +1,6 @@
 # SimpleCov
 
-Tested with SimpleCov 1.0.3, Ruby 3.4, and two RSpec Multicore workers. The compatibility test compares serial and parallel RSpec results, requires both workers to produce distinct result sets, collates those results, and generates an HTML report containing files covered exclusively by different workers.
+Tested with SimpleCov 1.0.3, Ruby 3.4, and two RSpec Multicore workers. Serial and parallel RSpec results match, both workers retain their exclusive coverage, and one `bundle exec rspec` run produces the combined HTML report.
 
 ## Installation
 
@@ -11,70 +11,80 @@ group :test do
 end
 ```
 
-## RSpec setup
+## Project helper
 
-SimpleCov must start before application code is loaded. Put this at the beginning of `spec/spec_helper.rb`, adjusting the profile and filters for your project:
+Create `spec/support/rspec_multicore/simplecov.rb`:
 
 ```ruby
+# frozen_string_literal: true
+
+require "fileutils"
 require "simplecov"
 
-coverage_results = File.expand_path("../tmp/coverage", __dir__)
+project_root = File.expand_path("../../..", __dir__)
+worker_results = File.join(project_root, "tmp/rspec-multicore-coverage")
+
+# Remove result sets from the previous run before workers fork.
+FileUtils.rm_rf(worker_results)
 
 SimpleCov.start do
-  coverage_dir File.join(coverage_results, "parent")
-end
+  root project_root
+  coverage_dir File.join(project_root, "coverage")
 
-# Multicore workers use exit!, so the inherited at_exit finalizer cannot own
-# worker coverage.
-SimpleCov.at_exit {}
+  # Keep the project's existing filters, groups, track_files, and thresholds.
+end
 
 require "rspec/multicore"
 
 RSpec::Multicore.on_worker_fork do |slot|
   SimpleCov.command_name("rspec-multicore-worker-#{slot}")
-  SimpleCov.coverage_dir(File.join(coverage_results, "worker-#{slot}"))
+  SimpleCov.coverage_dir(File.join(worker_results, "worker-#{slot}"))
+  SimpleCov.formatter false
 end
 
 RSpec::Multicore.on_worker_shutdown do
+  # Calling result stores this worker's .resultset.json. Formatting is
+  # disabled in workers because the parent owns the final HTML report.
   SimpleCov.result.format!
 end
-```
 
-If the project already uses a SimpleCov profile, filters, groups, or `track_files`, keep that configuration inside this `SimpleCov.start` block.
+RSpec.configure do |config|
+  config.after(:suite) do
+    resultsets = Dir[File.join(worker_results, "worker-*", ".resultset.json")]
+    next if resultsets.empty? # Native serial RSpec keeps SimpleCov's normal at_exit.
 
-## Generate the combined HTML report
+    SimpleCov.collate(resultsets) do
+      root project_root
+      coverage_dir File.join(project_root, "coverage")
+      formatter SimpleCov::Formatter::HTMLFormatter
+    end
 
-Create `script/collate_coverage.rb`:
-
-```ruby
-# frozen_string_literal: true
-
-require "simplecov"
-
-project_root = File.expand_path("..", __dir__)
-resultsets = Dir[File.join(project_root, "tmp/coverage/worker-*/.resultset.json")]
-
-abort "No worker coverage results found" if resultsets.empty?
-
-SimpleCov.collate(resultsets) do
-  root project_root
-  coverage_dir File.join(project_root, "coverage")
-  formatter SimpleCov::Formatter::HTMLFormatter
+    # SimpleCov.collate already finalized the merged result.
+    SimpleCov.at_exit {}
+  end
 end
 ```
 
-Run RSpec and then collate:
+## Load the helper
+
+Require it at the very beginning of `spec/spec_helper.rb`, before Rails, the application, or any project source files:
+
+```ruby
+# spec/spec_helper.rb
+require_relative "support/rspec_multicore/simplecov"
+
+# Remaining test setup follows.
+```
+
+Run the suite normally:
 
 ```bash
 bundle exec rspec
-bundle exec ruby script/collate_coverage.rb
 open coverage/index.html
 ```
 
-The final report is `coverage/index.html`. Configure CI to run the collation step even when RSpec fails if coverage from failing runs is required.
+When multicore runs, worker shutdown hooks save partial results and the parent `after(:suite)` hook collates them. If RSpec selects serial execution, no worker result sets exist and SimpleCov’s normal finalizer generates the report instead.
 
-## Why this is necessary
+For coverage assembled across separate CI jobs or machines, use a standalone final job calling `SimpleCov.collate` on the downloaded result sets. That is an alternative to this single-process parent hook, not an additional command required for normal RSpec runs.
 
-Each process owns a partial coverage result. Unique command names and directories prevent workers from overwriting one another. The shutdown hook saves coverage before `exit!`, and `SimpleCov.collate` creates the union used by the final formatter.
-
-This is application-owned configuration; RSpec Multicore does not automatically start or merge SimpleCov. See the executable [SimpleCov fixture](../../compatibility/fixtures/simplecov/spec_helper.rb).
+This helper is project-owned configuration; RSpec Multicore does not automatically start or merge SimpleCov. See the executable [SimpleCov fixture](../../compatibility/fixtures/simplecov/spec_helper.rb).
