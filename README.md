@@ -79,18 +79,28 @@ Fork hooks run in registration order. Shutdown hooks run in reverse order; all s
 
 The Rails adapter automatically handles only ActiveRecord:
 
-- It refuses to manage databases outside `Rails.env.test?`.
+- It refuses to connect workers outside `Rails.env.test?`.
 - Worker 1 uses the base test database.
 - Later workers use `_2`, `_3`, and so on. SQLite suffixes are inserted before the extension.
 - Inherited connections are cleared before each worker establishes its own connection.
+- Every writable test configuration managed by Rails database tasks gets a
+  worker database. Replicas and configurations with `database_tasks: false`
+  are not created, purged, or dropped.
 
-Prepare disposable databases before a parallel run:
+Use the same database tasks as any Rails application. When the Rails task
+includes the test environment, the adapter applies the corresponding create,
+prepare, schema-load, purge, or drop operation to the extra worker databases:
 
 ```bash
-bundle exec rake db:test:multicore:prepare
-bundle exec rake db:test:multicore:drop
-bundle exec rake db:test:multicore:recreate
+bin/rails db:prepare
+bin/rails db:test:prepare
+bin/rails db:reset
 ```
+
+No worker entries are needed in `database.yml`. Running RSpec never creates,
+purges, or migrates databases; prepare them explicitly with Rails. The normal
+test schema must be current, and the database user needs the privileges required
+by the Rails task you invoke.
 
 Redis, Sidekiq, cache stores, loggers, SimpleCov, and profilers are deliberately not automatic. Configure them with the lifecycle hooks when the project needs them.
 

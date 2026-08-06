@@ -41,7 +41,7 @@ No FactoryBot-specific worker hook is required. Factories and callbacks use the 
 Prepare disposable worker databases before running:
 
 ```bash
-bundle exec rake db:test:multicore:prepare
+bin/rails db:prepare
 bundle exec rspec
 ```
 
