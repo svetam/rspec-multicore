@@ -2,7 +2,11 @@
 
 ## 0.2.0.pre2
 
-- Improves release validation and retry safety without changing runtime behavior.
+- Uses Rails' standard database tasks to manage worker test databases and
+  removes the prerelease custom task namespace.
+- Supports multiple writable test configurations while leaving replicas and
+  `database_tasks: false` configurations unmanaged.
+- Improves release validation and retry safety.
 
 ## 0.2.0.pre1
 

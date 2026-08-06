@@ -44,7 +44,8 @@ require_relative "support/rspec_multicore/database_cleaner"
 
 No additional worker hook is required for the transaction strategy because the cleaning block runs after the Rails adapter establishes the worker connection.
 
-Truncation and deletion strategies are not covered. If the project uses them, ensure they can only target disposable databases prepared by `db:test:multicore:prepare`.
+Truncation and deletion strategies are not covered. If the project uses them,
+ensure they can only target disposable databases prepared with the standard
+`bin/rails db:prepare` workflow.
 
 See the executable [Database Cleaner fixture](../../compatibility/fixtures/rails_stack/spec_helper.rb).
-

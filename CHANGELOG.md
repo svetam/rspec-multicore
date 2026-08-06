@@ -8,6 +8,10 @@
 - Make release publication independently retryable across RubyGems, Git tags,
   and GitHub Releases.
 - Add focused maintainer tooling for retrying failed release workflow runs.
+- Integrate worker test databases with Rails' standard create, prepare,
+  schema-load, purge, and drop task lifecycle.
+- Support every writable Rails test database configuration without duplicated
+  worker entries in `database.yml`.
 
 ## 0.2.0.pre1 - 2026-07-18
 

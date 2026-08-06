@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary = "ActiveRecord isolation for rspec-multicore Rails workers"
   spec.description = "Rails adapter for rspec-multicore that assigns each worker an isolated ActiveRecord " \
-                     "test database and provides focused prepare, drop, and recreate tasks."
+                     "test database through the standard Rails database-task lifecycle."
   spec.homepage = "https://github.com/svetam/rspec-multicore"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.0"
