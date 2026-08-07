@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0.pre3
+
+- (#11) Fix Rails database lifecycle and parallel coverage for pre3
+
 ## 0.2.0.pre2
 
 - Improves release validation and retry safety without changing runtime behavior.

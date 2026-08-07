@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0.pre3 - 2026-08-07
+
+### Fixed
+
+- (#11) Fix Rails database lifecycle and parallel coverage for pre3
+
 ## 0.2.0.pre2 - 2026-07-20
 
 ### Changed
