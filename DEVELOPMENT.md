@@ -150,7 +150,7 @@ REDIS_URL=redis://127.0.0.1:6379 bundle exec rake spec
 To exercise its Rails 7.1 contract, set `RAILS_VERSION='~> 7.1.0'` and update `activerecord` and `railties` before running. Restore the extended lockfile afterward. CI runs this tier weekly and on manual dispatch; it is intentionally outside the pull-request aggregate gate.
 
 Restore the committed `Gemfile.lock` with `git restore Gemfile.lock` after a
-local contract run. CI covers Ruby 3.2–3.4 on Ubuntu/macOS, minimum/latest RSpec
+local contract run. CI covers Ruby 3.2–4.0 on Ubuntu/macOS, minimum/latest RSpec
 3.13, Rails 7.1/8.0, and the required compatibility tier.
 
 ## Debugging
