@@ -4,9 +4,20 @@ on:
   push:
     branches: [master]
 
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version expected on master
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
-    if: github.repository == 'svetam/rspec-multicore'
+    if: github.repository == 'svetam/rspec-multicore' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -25,6 +36,8 @@ jobs:
 
       - name: Read and validate version
         id: version
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
         run: |
           CORE_VERSION=$(ruby -Irspec-multicore/lib -e 'require "rspec/multicore/version"; puts RSpec::Multicore::VERSION')
           RAILS_VERSION=$(ruby -Irspec-multicore-rails/lib -e 'require "rspec/multicore/rails/version"; puts RSpec::Multicore::Rails::VERSION')
@@ -34,22 +47,41 @@ jobs:
             exit 1
           fi
 
+          if [ -n "$EXPECTED_VERSION" ] && [ "$EXPECTED_VERSION" != "$CORE_VERSION" ]; then
+            echo "Requested version $EXPECTED_VERSION does not match master version $CORE_VERSION" >&2
+            exit 1
+          fi
+
+          for CHANGELOG in CHANGELOG.md rspec-multicore/CHANGELOG.md rspec-multicore-rails/CHANGELOG.md; do
+            if ! grep -Fq "## $CORE_VERSION" "$CHANGELOG"; then
+              echo "$CHANGELOG has no entry for $CORE_VERSION" >&2
+              exit 1
+            fi
+          done
+
+          if ! git rev-parse --verify --quiet "refs/tags/v$CORE_VERSION"; then
+            LATEST_VERSION=$(git tag --list 'v*' | ruby -rrubygems -e '
+              versions = $stdin.each_line.filter_map do |tag|
+                value = tag.strip.delete_prefix("v")
+                Gem::Version.new(value) unless value.empty?
+              end
+              puts versions.max if versions.any?
+            ')
+
+            if [ -n "$LATEST_VERSION" ]; then
+              ruby -rrubygems -e '
+                candidate = Gem::Version.new(ARGV.fetch(0))
+                latest = Gem::Version.new(ARGV.fetch(1))
+                abort "Version #{candidate} must be newer than #{latest}" unless candidate > latest
+              ' "$CORE_VERSION" "$LATEST_VERSION"
+            fi
+          fi
+
           echo "version=$CORE_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$CORE_VERSION" >> "$GITHUB_OUTPUT"
           ruby -rrubygems -e 'puts "prerelease=#{Gem::Version.new(ARGV.fetch(0)).prerelease?}"' "$CORE_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Check if tag already exists
-        id: tag
-        run: |
-          if git rev-parse --verify --quiet "refs/tags/${{ steps.version.outputs.tag }}"; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "${{ steps.version.outputs.tag }} already exists; skipping release"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build core gem
-        if: steps.tag.outputs.exists == 'false'
         working-directory: rspec-multicore
         run: |
           mkdir -p ../pkg
@@ -57,55 +89,122 @@ jobs:
             --output "../pkg/rspec-multicore-${{ steps.version.outputs.version }}.gem"
 
       - name: Build Rails gem
-        if: steps.tag.outputs.exists == 'false'
         working-directory: rspec-multicore-rails
         run: |
           gem build rspec-multicore-rails.gemspec \
             --output "../pkg/rspec-multicore-rails-${{ steps.version.outputs.version }}.gem"
 
-      - name: Configure RubyGems credentials
-        if: steps.tag.outputs.exists == 'false'
-        uses: rubygems/configure-rubygems-credentials@v2.1.0
-
-      - name: Push gems to RubyGems.org
-        if: steps.tag.outputs.exists == 'false'
+      - name: Validate package metadata
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          published() {
-            ruby -rjson -rnet/http -e '
-              response = Net::HTTP.get_response(URI("https://rubygems.org/api/v1/versions/#{ARGV.fetch(0)}.json"))
-              exit 1 unless response.is_a?(Net::HTTPSuccess)
-              versions = JSON.parse(response.body)
-              exit versions.any? { |entry| entry.fetch("number") == ARGV.fetch(1) } ? 0 : 1
-            ' "$1" "$VERSION"
-          }
+          ruby -rrubygems/package -e '
+            version = Gem::Version.new(ENV.fetch("VERSION"))
+            core = Gem::Package.new("pkg/rspec-multicore-#{version}.gem").spec
+            rails = Gem::Package.new("pkg/rspec-multicore-rails-#{version}.gem").spec
 
-          if published rspec-multicore; then
+            abort "Unexpected core package" unless core.name == "rspec-multicore" && core.version == version
+            abort "Unexpected Rails package" unless rails.name == "rspec-multicore-rails" && rails.version == version
+
+            dependency = rails.dependencies.find { |entry| entry.name == "rspec-multicore" }
+            expected = Gem::Requirement.new("= #{version}")
+            abort "Rails must depend on rspec-multicore #{expected}" unless dependency&.requirement == expected
+          '
+
+      - name: Check published gems
+        id: published
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ruby -rjson -rnet/http -e '
+            versions = %w[rspec-multicore rspec-multicore-rails].to_h do |name|
+              response = Net::HTTP.get_response(URI("https://rubygems.org/api/v1/versions/#{name}.json"))
+              abort "RubyGems API failed for #{name}: #{response.code}" unless response.is_a?(Net::HTTPSuccess)
+              published = JSON.parse(response.body).any? { |entry| entry.fetch("number") == ENV.fetch("VERSION") }
+              [name, published]
+            end
+
+            puts "core=#{versions.fetch("rspec-multicore")}"
+            puts "rails=#{versions.fetch("rspec-multicore-rails")}"
+            puts "missing=#{versions.value?(false)}"
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: Configure RubyGems credentials
+        if: steps.published.outputs.missing == 'true'
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+
+      - name: Push gems to RubyGems.org
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CORE_PUBLISHED: ${{ steps.published.outputs.core }}
+          RAILS_PUBLISHED: ${{ steps.published.outputs.rails }}
+        run: |
+          if [ "$CORE_PUBLISHED" = "true" ]; then
             echo "rspec-multicore $VERSION is already published"
           else
             gem push "pkg/rspec-multicore-$VERSION.gem"
           fi
 
-          if published rspec-multicore-rails; then
+          if [ "$RAILS_PUBLISHED" = "true" ]; then
             echo "rspec-multicore-rails $VERSION is already published"
           else
             gem push "pkg/rspec-multicore-rails-$VERSION.gem"
           fi
 
-      - name: Create Git tag
-        if: steps.tag.outputs.exists == 'false'
+      - name: Verify published gems
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+          ruby -rjson -rnet/http -e '
+            %w[rspec-multicore rspec-multicore-rails].each do |name|
+              response = Net::HTTP.get_response(URI("https://rubygems.org/api/v1/versions/#{name}.json"))
+              abort "RubyGems API failed for #{name}: #{response.code}" unless response.is_a?(Net::HTTPSuccess)
+              published = JSON.parse(response.body).any? { |entry| entry.fetch("number") == ENV.fetch("VERSION") }
+              abort "#{name} #{ENV.fetch("VERSION")} is not published" unless published
+            end
+          '
+
+      - name: Create Git tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/$TAG"; then
+            TAG_COMMIT=$(git rev-list -n 1 "$TAG")
+            if [ "$TAG_COMMIT" != "$GITHUB_SHA" ]; then
+              echo "$TAG points to $TAG_COMMIT, expected $GITHUB_SHA" >&2
+              exit 1
+            fi
+            echo "$TAG already points to the release commit"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+          fi
 
       - name: Create GitHub Release
-        if: steps.tag.outputs.exists == 'false'
-        uses: softprops/action-gh-release@v3.0.2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
-          prerelease: ${{ steps.version.outputs.prerelease }}
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG already exists"
+          elif [ "$PRERELEASE" = "true" ]; then
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes --prerelease
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+          fi
+
+      - name: Verify complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          TAG_COMMIT=$(git rev-list -n 1 "$TAG")
+          if [ "$TAG_COMMIT" != "$GITHUB_SHA" ]; then
+            echo "$TAG points to $TAG_COMMIT, expected $GITHUB_SHA" >&2
+            exit 1
+          fi
+
+          gh release view "$TAG" >/dev/null

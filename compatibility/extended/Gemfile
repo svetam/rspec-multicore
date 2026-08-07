@@ -1,0 +1,18 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+rails_version = ENV.fetch("RAILS_VERSION", "~> 8.0.0")
+
+gem "activerecord", rails_version
+gem "bullet", "8.1.3"
+gem "capybara", "3.40.0"
+gem "fuubar", "2.5.1"
+gem "railties", rails_version
+gem "rspec", "~> 3.13"
+gem "rspec-multicore", path: "../../rspec-multicore"
+gem "rspec-multicore-rails", path: "../../rspec-multicore-rails"
+gem "rspec-retry", "0.6.2"
+gem "sidekiq", "8.1.6"
+gem "sqlite3", ">= 2.0"
+gem "test-prof", "1.6.3"

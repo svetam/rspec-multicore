@@ -19,6 +19,7 @@ Metrics/BlockLength:
   Exclude:
     - 'spec/**/*_spec.rb'
     - 'spec/**/*.rb'
+    - 'compatibility/**/*_spec.rb'
     - '*.gemspec'
 
 # Disable metrics for complex system code
@@ -43,6 +44,16 @@ Metrics/PerceivedComplexity:
 Lint/EmptyBlock:
   Exclude:
     - 'spec/**/*_spec.rb'
+    - 'compatibility/fixtures/**/*.rb'
+
+Metrics/ParameterLists:
+  Exclude:
+    - "compatibility/support/runner.rb"
+
+Style/Documentation:
+  Exclude:
+    - "spec/**/*.rb"
+    - "compatibility/**/*.rb"
 
 # Allow format strings in tests
 Style/FormatStringToken:

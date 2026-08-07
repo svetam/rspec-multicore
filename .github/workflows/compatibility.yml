@@ -1,0 +1,45 @@
+name: Extended compatibility
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  extended-compatibility:
+    runs-on: ubuntu-latest
+    name: Rails ${{ matrix.rails }} / extended gems
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/compatibility/extended/Gemfile
+      RAILS_VERSION: ${{ matrix.rails }}
+      REDIS_URL: redis://127.0.0.1:6379
+    strategy:
+      fail-fast: false
+      matrix:
+        rails: ["~> 7.1.0", "~> 8.0.0"]
+    services:
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - working-directory: compatibility/extended
+        run: |
+          bundle update activerecord railties
+          bundle exec rake spec
+      - name: Restore and verify checkout
+        if: always()
+        run: |
+          git restore compatibility/extended/Gemfile.lock
+          git status --short
+          test -z "$(git status --porcelain)"
