@@ -155,14 +155,39 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          ruby -rjson -rnet/http -e '
-            %w[rspec-multicore rspec-multicore-rails].each do |name|
-              response = Net::HTTP.get_response(URI("https://rubygems.org/api/v1/versions/#{name}.json"))
-              abort "RubyGems API failed for #{name}: #{response.code}" unless response.is_a?(Net::HTTPSuccess)
-              published = JSON.parse(response.body).any? { |entry| entry.fetch("number") == ENV.fetch("VERSION") }
-              abort "#{name} #{ENV.fetch("VERSION")} is not published" unless published
-            end
-          '
+          for attempt in $(seq 1 30); do
+            ruby -rjson -rnet/http -e '
+              missing = %w[rspec-multicore rspec-multicore-rails].reject do |name|
+                response = Net::HTTP.get_response(URI("https://rubygems.org/api/v1/versions/#{name}.json"))
+                unless response.is_a?(Net::HTTPSuccess)
+                  warn "RubyGems API failed for #{name}: #{response.code}"
+                  exit 2
+                end
+                JSON.parse(response.body).any? { |entry| entry.fetch("number") == ENV.fetch("VERSION") }
+              end
+
+              if missing.empty?
+                puts "All gems are published"
+              else
+                warn "Waiting for RubyGems propagation: #{missing.join(", ")} #{ENV.fetch("VERSION")} missing"
+                exit 1
+              end
+            '
+            status=$?
+
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            elif [ "$status" -eq 2 ]; then
+              exit 1
+            fi
+
+            if [ "$attempt" -eq 30 ]; then
+              echo "RubyGems did not show all published gems after 5 minutes" >&2
+              exit 1
+            fi
+
+            sleep 10
+          done
 
       - name: Create Git tag
         env:
