@@ -14,10 +14,17 @@ RSpec.describe RSpec::Multicore::Rails::DatabaseManager do
     config("external", database: "external_test", adapter: "postgresql", database_tasks: false)
   end
   let(:configurations) { [base_config, animals_config, replica_config, external_config] }
+  let(:current_config) { base_config }
+  let(:connection_handler) do
+    instance_double(ActiveRecord::ConnectionAdapters::ConnectionHandler)
+  end
 
   before do
     allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new("test"))
-    allow(ActiveRecord::Base).to receive(:connection_db_config).and_return(base_config)
+    allow(ActiveRecord::Base).to receive(:connection_db_config).and_return(current_config)
+    allow(ActiveRecord::Base).to receive(:connection_handler).and_return(connection_handler)
+    allow(connection_handler).to receive(:establish_connection)
+    allow(connection_handler).to receive(:clear_all_connections!)
     allow(ActiveRecord::Base.configurations).to receive(:configs_for)
       .with(env_name: "test", include_hidden: true).and_return(configurations)
     allow(RSpec::Multicore).to receive(:workers).and_return(3)
@@ -41,17 +48,14 @@ RSpec.describe RSpec::Multicore::Rails::DatabaseManager do
   end
 
   it "routes every test configuration to the worker and restores the base names" do
-    handler = instance_double(ActiveRecord::ConnectionAdapters::ConnectionHandler)
-    allow(ActiveRecord::Base).to receive(:connection_handler).and_return(handler)
     allow(ActiveRecord::Base).to receive(:establish_connection)
-    allow(handler).to receive(:clear_all_connections!)
 
     manager.connect_worker(2)
 
     expect(configurations.map(&:database)).to eq(
       %w[portal_test_2 animals_test_2 portal_test_2 external_test_2]
     )
-    expect(handler).to have_received(:clear_all_connections!).once
+    expect(connection_handler).to have_received(:clear_all_connections!).once
     expect(ActiveRecord::Base).to have_received(:establish_connection).with(base_config).once
 
     manager.connect_worker(1)
@@ -59,6 +63,19 @@ RSpec.describe RSpec::Multicore::Rails::DatabaseManager do
     expect(configurations.map(&:database)).to eq(
       %w[portal_test animals_test portal_test external_test]
     )
+  end
+
+  it "anchors worker names to the canonical test configuration" do
+    allow(ActiveRecord::Base).to receive(:connection_db_config).and_return(
+      config("primary", database: "portal_test_2", adapter: "postgresql")
+    )
+    created = []
+    allow(ActiveRecord::Tasks::DatabaseTasks).to receive(:create) { created << _1.database }
+
+    manager.create_workers(name: "primary")
+
+    expect(created).to eq(%w[portal_test_2 portal_test_3])
+    expect(created).not_to include("portal_test_2_2")
   end
 
   it "prepares only writable suffixed databases" do
@@ -79,6 +96,46 @@ RSpec.describe RSpec::Multicore::Rails::DatabaseManager do
     )
     expect(loaded.map { _1.take(2) }).to match_array(purged)
     expect(loaded.map(&:last)).to all(eq(:ruby))
+  end
+
+  it "connects to each worker for schema loading and restores the original connection" do
+    connections = []
+    allow(connection_handler).to receive(:establish_connection) { connections << _1 }
+    allow(ActiveRecord::Tasks::DatabaseTasks).to receive(:load_schema)
+
+    manager.load_schema_workers(name: "primary")
+
+    expect(connections.map(&:database)).to eq(%w[portal_test_2 portal_test_3 portal_test])
+  end
+
+  it "restores the original connection after every lifecycle operation" do
+    allow(ActiveRecord::Tasks::DatabaseTasks).to receive(:create)
+    allow(ActiveRecord::Tasks::DatabaseTasks).to receive(:purge)
+    allow(ActiveRecord::Tasks::DatabaseTasks).to receive(:load_schema)
+    allow(ActiveRecord::Tasks::DatabaseTasks).to receive(:drop)
+
+    manager.create_workers(name: "primary")
+    manager.purge_workers(name: "primary")
+    manager.load_schema_workers(name: "primary")
+    manager.drop_workers(name: "primary")
+
+    expect(connection_handler).to have_received(:establish_connection)
+      .with(current_config, clobber: true).exactly(4).times
+  end
+
+  {
+    create_workers: :create,
+    purge_workers: :purge,
+    load_schema_workers: :load_schema,
+    drop_workers: :drop
+  }.each do |operation, database_task|
+    it "restores the original connection when #{operation} fails" do
+      allow(ActiveRecord::Tasks::DatabaseTasks).to receive(database_task).and_raise("database failure")
+
+      expect { manager.public_send(operation, name: "primary") }.to raise_error("database failure")
+      expect(connection_handler).to have_received(:establish_connection)
+        .with(current_config, clobber: true).once
+    end
   end
 
   it "filters database tasks by configuration name" do

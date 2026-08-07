@@ -13,14 +13,18 @@ Both gems require Ruby 3.2+ and a platform with `fork` and `UNIXSocket.pair`.
 
 ```ruby
 group :test do
-  gem "rspec-multicore", "0.2.0.pre2"
+  # Rails applications that use ActiveRecord need only the adapter:
+  gem "rspec-multicore-rails", "0.2.0.pre3"
 
-  # Rails applications that use ActiveRecord:
-  gem "rspec-multicore-rails", "0.2.0.pre2"
+  # Non-Rails applications use the core gem instead:
+  # gem "rspec-multicore", "0.2.0.pre3"
 end
 ```
 
-Require the core from your test setup. Rails applications can require the adapter instead; it loads the core automatically.
+Bundler automatically loads either gem from the test group. The Rails adapter
+loads the core, so Rails applications need no `require: false`, initializer, or
+manual require. Applications that do not call `Bundler.require` can load the
+chosen gem explicitly:
 
 ```ruby
 require "rspec/multicore"

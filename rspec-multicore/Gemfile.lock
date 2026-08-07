@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    rspec-multicore (0.2.0.pre2)
+    rspec-multicore (0.2.0.pre3)
       rspec-core (~> 3.13)
 
 GEM
@@ -76,7 +76,7 @@ GEM
     tsort (0.2.0)
     unicode-display_width (3.2.0)
       unicode-emoji (~> 4.1)
-    unicode-emoji (4.1.0)
+    unicode-emoji (4.2.0)
 
 PLATFORMS
   arm64-darwin-24
