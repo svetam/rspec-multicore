@@ -11,8 +11,9 @@ module RSpec
         TEST_ENV = "test"
 
         def initialize
-          @primary_config = ActiveRecord::Base.connection_db_config
+          @original_config = ActiveRecord::Base.connection_db_config
           @configs = test_configs
+          @primary_config = canonical_config(@original_config) || @configs.first || @original_config
           @configs << @primary_config unless @configs.include?(@primary_config)
           @base_databases = {}.compare_by_identity
           @configs.each { @base_databases[_1] = _1.database }
@@ -25,19 +26,24 @@ module RSpec
           ActiveRecord::Base.establish_connection(@primary_config)
         end
 
-        def create_workers(name: nil) = each_worker_config(name:) { database_tasks.create(_1) }
+        def create_workers(name: nil) = preserve_connection { each_worker_config(name:) { database_tasks.create(_1) } }
 
         def purge_workers(name: nil)
-          each_worker_config(name:) do |config|
-            database_tasks.purge(config)
-          rescue ActiveRecord::NoDatabaseError
-            database_tasks.create(config)
+          preserve_connection do
+            each_worker_config(name:) do |config|
+              database_tasks.purge(config)
+            rescue ActiveRecord::NoDatabaseError
+              database_tasks.create(config)
+            end
           end
         end
 
         def load_schema_workers(name: nil)
-          each_worker_config(name:) do |config|
-            database_tasks.load_schema(config, schema_format(config))
+          preserve_connection do
+            each_worker_config(name:) do |config|
+              establish_connection(config)
+              database_tasks.load_schema(config, schema_format(config))
+            end
           end
         end
 
@@ -46,7 +52,7 @@ module RSpec
           load_schema_workers(name:)
         end
 
-        def drop_workers(name: nil) = each_worker_config(name:) { database_tasks.drop(_1) }
+        def drop_workers(name: nil) = preserve_connection { each_worker_config(name:) { database_tasks.drop(_1) } }
 
         def workers = RSpec::Multicore.workers
 
@@ -66,6 +72,8 @@ module RSpec
           configurations = ActiveRecord::Base.configurations
           Array(configurations.configs_for(env_name: TEST_ENV, include_hidden: true))
         end
+
+        def canonical_config(config) = @configs.find { _1.env_name == config.env_name && _1.name == config.name }
 
         def task_configs(name: nil)
           @configs.select do |config|
@@ -91,6 +99,17 @@ module RSpec
 
         def base_database(config) = @base_databases.fetch(config)
         def database_tasks = ActiveRecord::Tasks::DatabaseTasks
+
+        def preserve_connection
+          yield
+        ensure
+          establish_connection(@original_config)
+        end
+
+        def establish_connection(config)
+          handler = ActiveRecord::Base.connection_handler
+          handler.establish_connection(config, clobber: true)
+        end
 
         def schema_format(config)
           return config.schema_format if config.respond_to?(:schema_format)

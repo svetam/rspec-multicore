@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "fileutils"
 require "tmpdir"
 
 RSpec.describe "SQLite worker isolation" do
@@ -49,6 +50,51 @@ RSpec.describe "SQLite worker isolation" do
     end
   end
 
+  it "loads schemas into every worker and restores the base connection" do
+    Dir.mktmpdir("rspec-multicore-schema") do |directory|
+      base_database = File.join(directory, "app_test.sqlite3")
+      with_sqlite_configuration(base_database) do
+        allow(RSpec::Multicore).to receive(:workers).and_return(3)
+        schema_directory = File.join(directory, "db")
+        FileUtils.mkdir_p(schema_directory)
+        File.write(
+          File.join(schema_directory, "schema.rb"),
+          <<~RUBY
+            ActiveRecord::Schema[7.1].define do
+              create_table :schema_markers do |table|
+                table.string :name
+              end
+            end
+          RUBY
+        )
+        with_database_tasks_directory(schema_directory) do
+          ActiveRecord::Base.connection.create_table(:base_markers) { _1.string :name }
+          manager = RSpec::Multicore::Rails::DatabaseManager.new
+
+          manager.create_workers
+          expect(ActiveRecord::Base.connection_db_config.database).to eq(base_database)
+
+          manager.load_schema_workers
+          expect(ActiveRecord::Base.connection_db_config.database).to eq(base_database)
+          expect(ActiveRecord::Base.connection.tables).to include("base_markers")
+          expect(ActiveRecord::Base.connection.tables).not_to include("schema_markers")
+
+          [2, 3].each do |slot|
+            manager.connect_worker(slot)
+            expect(ActiveRecord::Base.connection.tables).to include("schema_markers")
+          end
+
+          manager.connect_worker(1)
+          manager.purge_workers
+          expect(ActiveRecord::Base.connection_db_config.database).to eq(base_database)
+          manager.drop_workers
+          expect(ActiveRecord::Base.connection_db_config.database).to eq(base_database)
+          expect(worker_databases(base_database).select { File.exist?(_1) }).to be_empty
+        end
+      end
+    end
+  end
+
   def create_records(name)
     ActiveRecord::Base.connection.create_table(:records) { _1.string :name }
     ActiveRecord::Base.connection.execute("INSERT INTO records (name) VALUES ('#{name}')")
@@ -65,6 +111,15 @@ RSpec.describe "SQLite worker isolation" do
   ensure
     ActiveRecord::Base.connection_handler.clear_all_connections!
     ActiveRecord::Base.configurations = previous
+  end
+
+  def with_database_tasks_directory(directory)
+    database_tasks = ActiveRecord::Tasks::DatabaseTasks
+    previous = database_tasks.instance_variable_get(:@db_dir)
+    database_tasks.db_dir = directory
+    yield
+  ensure
+    database_tasks.db_dir = previous
   end
 
   def worker_databases(base) = [2, 3].map { "#{base.delete_suffix(".sqlite3")}_#{_1}.sqlite3" }

@@ -2,6 +2,17 @@
 
 `rspec-multicore-rails` loads `rspec-multicore` and automatically isolates ActiveRecord connections for Rails test workers.
 
+## Installation
+
+```ruby
+group :test do
+  gem "rspec-multicore-rails", "0.2.0.pre3"
+end
+```
+
+Normal `Bundler.require` loading requires no `require: false`, initializer, or
+manual require. The adapter loads the matching core gem automatically.
+
 Worker 1 uses the base test database. Later workers use `_2`, `_3`, and so on;
 SQLite suffixes are placed before the extension. The adapter refuses to connect
 workers outside test and clears inherited connections before connecting.

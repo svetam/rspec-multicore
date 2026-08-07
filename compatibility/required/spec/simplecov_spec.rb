@@ -9,7 +9,10 @@ RSpec.describe "SimpleCov compatibility" do
         "simplecov",
         workers: 0,
         output: File.join(directory, "serial.json"),
-        env: { "COVERAGE_ROOT" => File.join(directory, "serial") }
+        env: {
+          "COVERAGE_ROOT" => File.join(directory, "serial"),
+          "COVERAGE_SUMMARY" => File.join(directory, "serial.json.coverage")
+        }
       )
       parallel = Compatibility.run_rspec(
         "simplecov",
@@ -25,13 +28,19 @@ RSpec.describe "SimpleCov compatibility" do
       expect(parallel.exit_code).to eq(0), parallel.output
       expect(Compatibility.example_results(File.join(directory, "parallel.json")))
         .to eq(Compatibility.example_results(File.join(directory, "serial.json")))
-      resultsets = Dir[File.join(directory, "worker-*", ".resultset.json")]
-      expect(resultsets.size).to eq(2)
+      resultsets = Dir[File.join(directory, "{parent,worker-*}", ".resultset.json")]
+      expect(resultsets.size).to eq(3)
       expect(resultsets.flat_map { JSON.parse(File.read(_1)).keys })
-        .to contain_exactly("rspec-multicore-worker-1", "rspec-multicore-worker-2")
+        .to contain_exactly(
+          "rspec-multicore-parent",
+          "rspec-multicore-worker-1",
+          "rspec-multicore-worker-2"
+        )
 
       coverage = JSON.parse(File.read(File.join(directory, "merged.json")))
-      expect(coverage.keys).to contain_exactly("alpha.rb", "beta.rb")
+      serial_coverage = JSON.parse(File.read(File.join(directory, "serial.json.coverage")))
+      expect(coverage).to eq(serial_coverage)
+      expect(coverage.keys).to contain_exactly("alpha.rb", "beta.rb", "preloaded.rb")
       expect(coverage.values).to all(be_an(Array).and(be_any))
 
       html = File.join(directory, "merged", "index.html")
