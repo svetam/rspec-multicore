@@ -38,6 +38,7 @@ module RSpec
 
       def force_quit
         signal_workers("KILL")
+        reap_workers
         invoke_original_handler
         Process.exit!(1)
       end
@@ -51,6 +52,17 @@ module RSpec
           Process.kill(signal, worker.pid)
         rescue Errno::ESRCH
           nil
+        end
+      end
+
+      def reap_workers
+        @workers.each do |worker|
+          next if worker.completed
+
+          Process.waitpid(worker.pid)
+          worker.completed = true
+        rescue Errno::ECHILD
+          worker.completed = true
         end
       end
     end
