@@ -185,6 +185,7 @@ module RSpec
       def event_loop
         active = workers.dup
         until active.empty?
+          @interrupt_handler.force_quit if @interrupt_handler.force_quit?
           stop_queued_work if @interrupt_handler.interrupted?
           readable, = IO.select(active.map { _1.channel.socket }, nil, nil, 0.05)
           next unless readable
@@ -198,6 +199,7 @@ module RSpec
             disconnect(worker, active)
           end
         end
+        @interrupt_handler.force_quit if @interrupt_handler.force_quit?
         flush_completed
       end
 

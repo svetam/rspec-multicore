@@ -7,10 +7,12 @@ module RSpec
       def initialize(workers)
         @workers = workers
         @interrupted = false
+        @force_quit = false
       end
 
       def install
         @interrupted = false
+        @force_quit = false
         @original_handler = Signal.trap("INT") { handle }
       end
 
@@ -24,11 +26,18 @@ module RSpec
       def install_worker = Signal.trap("INT") { RSpec.world.wants_to_quit = true }
 
       def interrupted? = @interrupted
+      def force_quit? = @force_quit
+
+      def force_quit
+        reap_workers
+        invoke_original_handler
+        Process.exit!(1)
+      end
 
       private
 
       def handle
-        return force_quit if interrupted?
+        return request_force_quit if interrupted?
 
         @interrupted = true
         invoke_original_handler
@@ -36,11 +45,9 @@ module RSpec
         signal_workers("INT")
       end
 
-      def force_quit
+      def request_force_quit
+        @force_quit = true
         signal_workers("KILL")
-        reap_workers
-        invoke_original_handler
-        Process.exit!(1)
       end
 
       def invoke_original_handler = (@original_handler.call if @original_handler.respond_to?(:call))

@@ -15,18 +15,29 @@ RSpec.describe RSpec::Multicore::InterruptHandler do
     expect(Process).not_to have_received(:kill).with("INT", 456)
   end
 
-  it "kills and reaps every live worker before delegating a force quit" do
+  it "immediately kills every live worker when a force quit is requested" do
+    workers = [RSpec::Multicore::Pool::Worker.new(pid: 123, slot: 1)]
+    handler = described_class.new(workers)
+    handler.instance_variable_set(:@interrupted, true)
+    allow(Process).to receive(:kill)
+
+    handler.send(:handle)
+
+    expect(handler).to be_force_quit
+    expect(Process).to have_received(:kill).with("KILL", 123)
+  end
+
+  it "reaps every live worker before delegating a force quit" do
     workers = [RSpec::Multicore::Pool::Worker.new(pid: 123, slot: 1)]
     handler = described_class.new(workers)
     events = []
     handler.instance_variable_set(:@original_handler, -> { events << :delegate })
-    allow(Process).to receive(:kill) { events << :kill }
     allow(Process).to receive(:waitpid) { events << :reap }
     allow(Process).to receive(:exit!) { events << :exit }
 
-    handler.send(:force_quit)
+    handler.force_quit
 
-    expect(events).to eq(%i[kill reap delegate exit])
+    expect(events).to eq(%i[reap delegate exit])
     expect(workers.first.completed).to be(true)
   end
 end
