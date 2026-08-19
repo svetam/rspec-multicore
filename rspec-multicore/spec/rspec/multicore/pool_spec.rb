@@ -106,4 +106,20 @@ RSpec.describe RSpec::Multicore::Pool do
     expect(pool.run([])).to eq([])
     expect(pool.workers).to be_empty
   end
+
+  it "stops queued work after an interrupt" do
+    pool = described_class.new(reporter:, configuration:, workers: 2)
+    channel = instance_double(RSpec::Multicore::Channel, write: nil)
+    worker = described_class::Worker.new(pid: 123, slot: 1, channel:)
+    groups = [FakeGroup.new("one"), FakeGroup.new("two"), FakeGroup.new("three")]
+
+    pool.send(:prepare, groups)
+    interrupt_handler = pool.instance_variable_get(:@interrupt_handler)
+    allow(interrupt_handler).to receive(:interrupted?).and_return(true)
+    pool.send(:assign_group, worker)
+
+    expect(channel).to have_received(:write).with([:no_more_groups])
+    expect(pool.instance_variable_get(:@results)).to eq([false, false, false])
+    expect(reporter).not_to have_received(:notify_non_example_exception)
+  end
 end

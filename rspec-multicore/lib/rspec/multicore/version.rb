@@ -2,6 +2,6 @@
 
 module RSpec
   module Multicore
-    VERSION = "0.2.0.pre3"
+    VERSION = "0.2.0.pre4"
   end
 end

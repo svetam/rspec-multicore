@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0.pre4 - 2026-08-19
+
+### Fixed
+
+- (#16) Handle SIGINT gracefully during parallel execution
+
 ## 0.2.0.pre3 - 2026-08-07
 
 ### Fixed

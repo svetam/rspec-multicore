@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0.pre4
+
+- (#16) Handle SIGINT gracefully during parallel execution
+
 ## 0.2.0.pre3
 
 - (#11) Fix Rails database lifecycle and parallel coverage for pre3
