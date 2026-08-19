@@ -14,10 +14,10 @@ Both gems require Ruby 3.2+ and a platform with `fork` and `UNIXSocket.pair`.
 ```ruby
 group :test do
   # Rails applications that use ActiveRecord need only the adapter:
-  gem "rspec-multicore-rails", "0.2.0.pre3"
+  gem "rspec-multicore-rails", "0.2.0.pre4"
 
   # Non-Rails applications use the core gem instead:
-  # gem "rspec-multicore", "0.2.0.pre3"
+  # gem "rspec-multicore", "0.2.0.pre4"
 end
 ```
 

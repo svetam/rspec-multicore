@@ -2,8 +2,56 @@
 
 module RSpec
   module Multicore
+    # Reaps workers, reports process failures, and guarantees child cleanup.
+    module WorkerLifecycle
+      private
+
+      def reap_workers
+        workers.each do |worker|
+          _, status = Process.waitpid2(worker.pid)
+          worker.status = status
+          worker.completed = true
+          next if status.success?
+          next if @results.compact.include?(false) || @failures.any?
+
+          @failures << Error.new("Worker #{worker.slot} exited with status #{status.exitstatus}")
+        rescue Errno::ECHILD
+          nil
+        end
+        @results.map! { _1.nil? ? false : _1 }
+      end
+
+      def report_failures
+        @failures.each do |failure|
+          @reporter.notify_non_example_exception(failure, "An error occurred in RSpec::Multicore.")
+        end
+      end
+
+      def cleanup
+        workers.each do |worker|
+          next if worker.completed
+
+          worker.channel.close
+          Process.kill("TERM", worker.pid)
+        rescue Errno::ESRCH
+          nil
+        end
+        workers.each do |worker|
+          next if worker.completed
+
+          Process.waitpid(worker.pid)
+          worker.completed = true
+        rescue Errno::ECHILD
+          worker.completed = true
+          nil
+        end
+      end
+    end
+
     # Schedules groups across persistent workers and replays ordered results.
     class Pool
+      include WorkerLifecycle
+
       Worker = Struct.new(:pid, :slot, :channel, :assigned, :completed, :status, keyword_init: true)
 
       attr_reader :workers
@@ -14,12 +62,14 @@ module RSpec
         @worker_count = workers
         @workers = []
         @failures = []
+        @interrupt_handler = InterruptHandler.new(@workers)
       end
 
       def run(groups)
         return [] if groups.empty?
 
         prepare(groups)
+        @interrupt_handler.install
         spawn_workers
         event_loop
         reap_workers
@@ -30,7 +80,11 @@ module RSpec
         report_failures
         Array.new(groups.size, false)
       ensure
-        cleanup
+        begin
+          cleanup
+        ensure
+          @interrupt_handler.restore
+        end
       end
 
       private
@@ -62,6 +116,7 @@ module RSpec
 
       def fork_worker(index, parent_channel, child_channel, inherited_channels)
         Process.fork do
+          @interrupt_handler.install_worker
           parent_channel.close
           inherited_channels.each(&:close)
           worker_main(index + 1, child_channel)
@@ -116,9 +171,9 @@ module RSpec
       end
 
       def shutdown_failed?(channel, slot)
-        errors = Hooks.run_shutdown(slot)
-        errors.each { safely_write(channel, [:worker_error, nil, Snapshot.failure(_1)]) }
-        errors.any?
+        Hooks.run_shutdown(slot).tap do |errors|
+          errors.each { safely_write(channel, [:worker_error, nil, Snapshot.failure(_1)]) }
+        end.any?
       end
 
       def safely_write(channel, frame)
@@ -130,7 +185,10 @@ module RSpec
       def event_loop
         active = workers.dup
         until active.empty?
-          readable, = IO.select(active.map { _1.channel.socket })
+          stop_queued_work if @interrupt_handler.interrupted?
+          readable, = IO.select(active.map { _1.channel.socket }, nil, nil, 0.05)
+          next unless readable
+
           readable.each do |socket|
             worker = active.find { _1.channel.socket.equal?(socket) }
             frame = worker.channel.read
@@ -154,6 +212,13 @@ module RSpec
       end
 
       def assign_group(worker)
+        if @interrupt_handler.interrupted?
+          stop_queued_work
+          worker.assigned = nil
+          worker.channel.write([:no_more_groups])
+          return
+        end
+
         index = @queue.shift
         if index
           worker.assigned = index
@@ -163,6 +228,8 @@ module RSpec
           worker.channel.write([:no_more_groups])
         end
       end
+
+      def stop_queued_work = @queue.shift(@queue.size).each { fail_group(_1) }
 
       def buffer_event(frame)
         _, group_index, sequence, event, payload = frame
@@ -207,47 +274,6 @@ module RSpec
             @bridge.replay(event, payload)
           end
           @next_replay += 1
-        end
-      end
-
-      def reap_workers
-        workers.each do |worker|
-          _, status = Process.waitpid2(worker.pid)
-          worker.status = status
-          worker.completed = true
-          next if status.success?
-          next if @results.compact.include?(false) || @failures.any?
-
-          @failures << Error.new("Worker #{worker.slot} exited with status #{status.exitstatus}")
-        rescue Errno::ECHILD
-          nil
-        end
-        @results.map! { _1.nil? ? false : _1 }
-      end
-
-      def report_failures
-        @failures.each do |failure|
-          @reporter.notify_non_example_exception(failure, "An error occurred in RSpec::Multicore.")
-        end
-      end
-
-      def cleanup
-        workers.each do |worker|
-          next if worker.completed
-
-          worker.channel.close
-          Process.kill("TERM", worker.pid)
-        rescue Errno::ESRCH
-          nil
-        end
-        workers.each do |worker|
-          next if worker.completed
-
-          Process.waitpid(worker.pid)
-          worker.completed = true
-        rescue Errno::ECHILD
-          worker.completed = true
-          nil
         end
       end
     end

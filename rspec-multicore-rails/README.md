@@ -6,7 +6,7 @@
 
 ```ruby
 group :test do
-  gem "rspec-multicore-rails", "0.2.0.pre3"
+  gem "rspec-multicore-rails", "0.2.0.pre4"
 end
 ```
 

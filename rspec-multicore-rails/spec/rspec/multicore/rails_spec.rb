@@ -5,7 +5,7 @@ require "spec_helper"
 RSpec.describe RSpec::Multicore::Rails do
   it "has the matching prerelease version" do
     expect(described_class::VERSION).to eq(RSpec::Multicore::VERSION)
-    expect(described_class::VERSION).to eq("0.2.0.pre3")
+    expect(described_class::VERSION).to eq("0.2.0.pre4")
   end
 
   it "loads the core runner patch" do

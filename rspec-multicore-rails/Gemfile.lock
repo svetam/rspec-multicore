@@ -1,16 +1,16 @@
 PATH
   remote: ../rspec-multicore
   specs:
-    rspec-multicore (0.2.0.pre3)
+    rspec-multicore (0.2.0.pre4)
       rspec-core (~> 3.13)
 
 PATH
   remote: .
   specs:
-    rspec-multicore-rails (0.2.0.pre3)
+    rspec-multicore-rails (0.2.0.pre4)
       activerecord (>= 7.1, < 9)
       railties (>= 7.1, < 9)
-      rspec-multicore (= 0.2.0.pre3)
+      rspec-multicore (= 0.2.0.pre4)
 
 GEM
   remote: https://rubygems.org/
